@@ -124,7 +124,6 @@ namespace ServidorHTTP
                 Console.WriteLine($"tareas = {SingletonHilos.instancia.NumeroHilosEnLista()}");
                 var asynResult = ar as IAsyncResult;
                 TcpClient client = (asynResult.AsyncState as TcpListener).EndAcceptTcpClient(asynResult); //Obtengo al cliente
-
                 client.Close();
             }
         }
