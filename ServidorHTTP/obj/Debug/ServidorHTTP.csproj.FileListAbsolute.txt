@@ -1,0 +1,6 @@
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\bin\Debug\ServidorHTTP.exe.config
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\bin\Debug\ServidorHTTP.exe
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\bin\Debug\ServidorHTTP.pdb
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\obj\Debug\ServidorHTTP.csprojResolveAssemblyReference.cache
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\obj\Debug\ServidorHTTP.exe
+D:\VS2015\Proyectos\ServidorHTTP\ServidorHTTP\obj\Debug\ServidorHTTP.pdb
