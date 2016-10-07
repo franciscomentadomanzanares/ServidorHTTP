@@ -5,9 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 
 /// <summary>
+/// Creamos el pool de hilos
 /// Enlace con una IP y un puerto
 /// Cuando recibamos datos, aceptamos la conexión
-/// Guardamos la conexión en el pool de hilos
+/// Procesamos la conexión en el pool de hilos
 /// Analizamos la cadena de datos
 /// Creamos una respuesta a razón de la información obtenida anteriormente
 /// Cerramos la conexión del cliente
@@ -30,8 +31,20 @@ namespace ServidorHTTP
         class Program
         {
             private const int MAXIMO_HILOS = 10;
-            private static object _lock = new object();
-            private static bool _exit;
+
+            /// <summary>
+            /// Variables de bloqueo del recurso compartido del hilo (método)
+            /// </summary>
+            private static object _lockHilo = new object();
+            private static bool _exitHilo;
+
+            /// <summary>
+            /// Variables de bloqueo del recurso compartido de la lista de clientes conectados.
+            /// </summary>
+            private static object _lockObtenerCliente = new object();
+            private static bool _exitObtenerCliente;
+            private static object _lockGuardarCliente = new object();
+            private static bool _exitGuardarCliente;
 
 
             private static object exitCall_lock = new object();
@@ -54,12 +67,73 @@ namespace ServidorHTTP
                 }
             }
 
-            ////Uso del patrón singleton
-            public sealed class SingletonHilos
+            /// <summary>
+            /// Asignamos los clientes conectados a la lista
+            /// </summary>
+            static class ClientesConectados
             {
-                private static List<Thread> tareas = new List<Thread>();
+                /// <summary>
+                /// Lista de clientes
+                /// </summary>
+                static private List<TcpClient> clientesConectados = new List<TcpClient>();
+
+                /// <summary>
+                /// //Obtenemos un cliente de la lista
+                /// </summary>
+                /// <remarks>En caso de no haber clientes en lista o estar la lista bloqueada devuelve nulo</remarks>
+                static public TcpClient ObtenerCliente
+                {
+                    get
+                    {
+                        lock (_lockObtenerCliente)
+                        {
+                            if (!_exitObtenerCliente)
+                            {
+                                _exitObtenerCliente = true;
+                                var cliente = clientesConectados.FirstOrDefault();
+                                //Si obtenemos un cliente lo eliminamos de la lista
+                                if (cliente != null)
+                                {
+                                    clientesConectados.Remove(cliente);
+                                }
+                                _exitObtenerCliente = false;
+                                return cliente;
+                            }
+                        }
+                        return null;
+                    }
+                }
+                /// <summary>
+                /// Guardamos el cliente en la lista de clientes conectados
+                /// </summary>
+                /// <param name="clienteConectado">cliente que establece la conexión</param>
+                static public void GuardarCliente(TcpClient clienteConectado)
+                {
+                    lock (_lockGuardarCliente)
+                    {
+                        if (!_exitGuardarCliente)
+                        {
+                            _exitGuardarCliente = true;
+                            clientesConectados.Add(clienteConectado);
+                            _exitGuardarCliente = false;
+                        }
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Patrón singleton que genera los hilos que usa el Server
+            /// </summary>
+            private sealed class SingletonHilos
+            {
+                //Lista de hilos
+                private static List<Thread> hilos = new List<Thread>();
                 public static readonly SingletonHilos instancia = new SingletonHilos();
 
+                /// <summary>
+                /// Inicializamos los hilos
+                /// </summary>
+                /// <param name="numeroHilos"></param>
                 public void Init(int numeroHilos)
                 {
                     if (numeroHilos < 1)
@@ -68,37 +142,45 @@ namespace ServidorHTTP
                     }
                     for (var i = 0; i < numeroHilos; i++)
                     {
-                        Thread tarea = new Thread(()=>Hilo());
-                        tareas.Add(tarea);
+                        Thread hilo = new Thread(() => Hilo()) { IsBackground = true };
+                        hilo.Name = $"Hilo-{Thread.CurrentThread.ManagedThreadId}";
+                        hilos.Add(hilo);
+                        hilo.Start();
                     }
-                }
-                public int NumeroHilosEnLista()
-                {
-                    return tareas.Count;
-                }
 
-                public void EjecutarHiloDisponible()
-                {
-                    var tarea = tareas.FirstOrDefault(x => !(x.IsAlive));
-                    Console.WriteLine($"Activo ={tarea.IsAlive} id={tarea.ManagedThreadId}");
-                    tarea.Start();
-                    Console.WriteLine($"Activo ={tarea.IsAlive}");
+                    var ids = hilos.Select(x => x.ManagedThreadId).ToArray();
+                    Console.WriteLine($"núm hilos ={hilos.Count} Hilos id creados {string.Join(" - ", ids)}");
                 }
             }
 
 
-            //Recurso compartido
+            /// <summary>
+            /// Método ejecutado por cada hilo
+            /// </summary>
             static void Hilo()
             {
-                lock (_lock)
+                while (true)
                 {
-                    if (!_exit)
+                    lock (_lockHilo)
                     {
-                        _exit = true;
-                        Console.WriteLine($"Activo ={Thread.CurrentThread.IsAlive}");
+                        if (!_exitHilo)
+                        {
+                            _exitHilo = true;
+                            var cliente = ClientesConectados.ObtenerCliente;
+                            if (cliente == null)
+                            {
+                                _exitHilo = false;
+                                continue;
+                            }
+                            Console.WriteLine($"hilo={Thread.CurrentThread.ManagedThreadId} ");
+
+                            _exitHilo = false;
+                        }
                     }
                 }
             }
+
+
             /// <summary>
             /// Enlace Ip y puerto remoto
             /// Aceptamos la conexión
@@ -121,9 +203,9 @@ namespace ServidorHTTP
             /// <param name="ar"></param>
             static void ClientAccepted(IAsyncResult ar)
             {
-                Console.WriteLine($"tareas = {SingletonHilos.instancia.NumeroHilosEnLista()}");
                 var asynResult = ar as IAsyncResult;
-                TcpClient client = (asynResult.AsyncState as TcpListener).EndAcceptTcpClient(asynResult); //Obtengo al cliente
+                TcpClient client = (asynResult.AsyncState as TcpListener).EndAcceptTcpClient(asynResult);
+                ClientesConectados.GuardarCliente(client);
                 client.Close();
             }
         }
