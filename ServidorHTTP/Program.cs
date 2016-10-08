@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 /// <summary>
+/// Tarea pasos a seguir
 /// Creamos el pool de hilos
 /// Enlace con una IP y un puerto
 /// Cuando recibamos datos, aceptamos la conexión
@@ -81,27 +82,24 @@ namespace ServidorHTTP
                 /// //Obtenemos un cliente de la lista
                 /// </summary>
                 /// <remarks>En caso de no haber clientes en lista o estar la lista bloqueada devuelve nulo</remarks>
-                static public TcpClient ObtenerCliente
+                static public TcpClient ObtenerCliente()
                 {
-                    get
+                    lock (_lockObtenerCliente)
                     {
-                        lock (_lockObtenerCliente)
+                        if (!_exitObtenerCliente)
                         {
-                            if (!_exitObtenerCliente)
+                            _exitObtenerCliente = true;
+                            var cliente = clientesConectados.FirstOrDefault();
+                            //Si obtenemos un cliente lo eliminamos de la lista
+                            if (cliente != null)
                             {
-                                _exitObtenerCliente = true;
-                                var cliente = clientesConectados.FirstOrDefault();
-                                //Si obtenemos un cliente lo eliminamos de la lista
-                                if (cliente != null)
-                                {
-                                    clientesConectados.Remove(cliente);
-                                }
-                                _exitObtenerCliente = false;
-                                return cliente;
+                                clientesConectados.Remove(cliente);
                             }
+                            _exitObtenerCliente = false;
+                            return cliente;
                         }
-                        return null;
                     }
+                    return null;
                 }
                 /// <summary>
                 /// Guardamos el cliente en la lista de clientes conectados
@@ -114,7 +112,10 @@ namespace ServidorHTTP
                         if (!_exitGuardarCliente)
                         {
                             _exitGuardarCliente = true;
-                            clientesConectados.Add(clienteConectado);
+                            if (!clientesConectados.Any(x => x.GetHashCode() == clienteConectado.GetHashCode()))
+                            {
+                                clientesConectados.Add(clienteConectado);
+                            }
                             _exitGuardarCliente = false;
                         }
                     }
@@ -166,14 +167,18 @@ namespace ServidorHTTP
                         if (!_exitHilo)
                         {
                             _exitHilo = true;
-                            var cliente = ClientesConectados.ObtenerCliente;
+                            var cliente = ClientesConectados.ObtenerCliente();
                             if (cliente == null)
                             {
                                 _exitHilo = false;
                                 continue;
                             }
                             Console.WriteLine($"hilo={Thread.CurrentThread.ManagedThreadId} ");
-
+                            //Mostramos información de nuestro cliente
+                            using (var reader = new StreamReader(cliente.GetStream()))
+                            {
+                                Console.Write(reader.ReadToEnd());
+                            }
                             _exitHilo = false;
                         }
                     }
@@ -204,9 +209,9 @@ namespace ServidorHTTP
             static void ClientAccepted(IAsyncResult ar)
             {
                 var asynResult = ar as IAsyncResult;
-                TcpClient client = (asynResult.AsyncState as TcpListener).EndAcceptTcpClient(asynResult);
-                ClientesConectados.GuardarCliente(client);
-                client.Close();
+                TcpClient clienteConectado = (asynResult.AsyncState as TcpListener).EndAcceptTcpClient(asynResult);
+                    ClientesConectados.GuardarCliente(clienteConectado);
+                // clienteConectado.Close();
             }
         }
     }
